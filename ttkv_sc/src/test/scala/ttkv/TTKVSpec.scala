@@ -1,13 +1,13 @@
 package ttkv
 
 import org.scalacheck.Properties
-import org.scalacheck.Prop.{forAll, BooleanOperators}
-import cats.effect.{Clock, IO, Sync}
+import org.scalacheck.Prop.{forAll, propBoolean}
+import cats.effect.{IO, Sync}
+import cats.effect.unsafe.implicits.global
 
 object TTKVSpec extends Properties("TTKV[IO]") {
 
   implicit val sync = Sync[IO]
-  implicit val clock = Clock.create[IO]
 
   property("initially empty") = forAll { (a: Char) =>
     TTKV.empty.get(a) == None
