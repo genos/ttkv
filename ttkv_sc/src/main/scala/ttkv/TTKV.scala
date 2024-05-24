@@ -3,11 +3,9 @@ package ttkv
 import cats.effect.{Clock, Sync}
 import cats.implicits._
 import alleycats.std.iterable._
-import scala.concurrent.duration.NANOSECONDS
 import scala.collection.immutable.LongMap
 
 case class TTKV[K, V](inner: Map[K, LongMap[V]]) extends AnyVal {
-
   def put[F[_]](key: K, value: V)
                (implicit sync: Sync[F]): F[TTKV[K, V]] =
     Clock[F].monotonic.map { t =>
@@ -28,11 +26,8 @@ case class TTKV[K, V](inner: Map[K, LongMap[V]]) extends AnyVal {
 
   def times: List[Long] =
     inner.keys.toList.flatMap(times).sorted
-
 }
 
 object TTKV {
-
   def empty[K, V]: TTKV[K, V] = TTKV(Map.empty)
-
 }
