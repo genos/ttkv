@@ -9,9 +9,9 @@ import scala.collection.immutable.LongMap
 case class TTKV[K, V](inner: Map[K, LongMap[V]]) extends AnyVal {
 
   def put[F[_]](key: K, value: V)
-               (implicit sync: Sync[F], clock: Clock[F]): F[TTKV[K, V]] =
-    clock.monotonic(NANOSECONDS).map { t =>
-      val m = inner.getOrElse(key, LongMap.empty) + (t -> value)
+               (implicit sync: Sync[F]): F[TTKV[K, V]] =
+    Clock[F].monotonic.map { t =>
+      val m = inner.getOrElse(key, LongMap.empty) + (t.toNanos -> value)
       TTKV(inner + (key -> m))
     }
 
