@@ -45,7 +45,7 @@ pub enum Error {
     Times(String),
 }
 
-/// Map-based TTKV
+/// BTreeMap-based TTKV
 #[derive(Debug)]
 pub struct Map<K, V> {
     started: Instant,
@@ -56,7 +56,7 @@ impl<K: Ord, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
     fn new() -> Result<Self, Error> {
         Ok(Self {
             started: Instant::now(),
-            mapping: Default::default(),
+            mapping: BTreeMap::new(),
         })
     }
     fn is_empty(&self) -> Result<bool, Error> {
@@ -95,43 +95,38 @@ impl<K: Ord, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
 /// SQLite-based TTKV
 #[derive(Debug)]
 pub struct SQLite<K, V> {
-    connection: Connection,
+    db: Connection,
     k: PhantomData<K>,
     v: PhantomData<V>,
 }
 
 impl<K: FromSql + ToSql, V: FromSql + ToSql> Ttkv<DateTime<Utc>, K, V> for SQLite<K, V> {
     fn new() -> Result<Self, Error> {
-        let connection =
-            Connection::open_in_memory().map_err(|e| Error::Creation(e.to_string()))?;
-        connection
-            .execute_batch(
-                "
+        let db = Connection::open_in_memory().map_err(|e| Error::Creation(e.to_string()))?;
+        db.execute_batch(
+            "
 create table ttkv (timestamp text primary key, key blob not null, value blob not null);
 create index key_index on ttkv(key);
         ",
-            )
-            .map_err(|e| Error::Creation(e.to_string()))?;
+        )
+        .map_err(|e| Error::Creation(e.to_string()))?;
         Ok(Self {
-            connection,
+            db,
             k: PhantomData,
             v: PhantomData,
         })
     }
     fn is_empty(&self) -> Result<bool, Error> {
         let mut stmt = self
-            .connection
-            .prepare_cached("select 1 from ttkv limit 1")
+            .db
+            .prepare_cached("select count(*) = 0 from ttkv")
             .map_err(|e| Error::IsEmpty(e.to_string()))?;
-        let count = stmt
-            .query_row((), |row| row.get::<usize, usize>(0))
-            .optional()
-            .map_err(|e| Error::IsEmpty(e.to_string()))?;
-        Ok(count.unwrap_or(0) == 0)
+        stmt.query_row((), |row| row.get::<usize, bool>(0))
+            .map_err(|e| Error::IsEmpty(e.to_string()))
     }
     fn put(&mut self, key: K, value: V, timestamp: Option<DateTime<Utc>>) -> Result<(), Error> {
         let mut stmt = self
-            .connection
+            .db
             .prepare_cached("insert into ttkv values (?1, ?2, ?3)")
             .map_err(|e| Error::Put(e.to_string()))?;
         stmt.execute((timestamp.unwrap_or_else(Utc::now), key, value))
@@ -139,17 +134,18 @@ create index key_index on ttkv(key);
         Ok(())
     }
     fn get(&self, key: &K, timestamp: Option<DateTime<Utc>>) -> Result<Option<V>, Error> {
-        let t = timestamp.unwrap_or(Utc::now());
-        let mut stmt = self.connection.prepare_cached(
+        let mut stmt = self.db.prepare_cached(
                 "select value from ttkv where key = ?1 and timestamp <= ?2 order by timestamp desc limit 1"
             ).map_err(|e| Error::Get(e.to_string()))?;
-        stmt.query_row((key, t), |row| row.get::<usize, V>(0))
-            .optional()
-            .map_err(|e| Error::Get(e.to_string()))
+        stmt.query_row((key, timestamp.unwrap_or_else(Utc::now)), |row| {
+            row.get::<usize, V>(0)
+        })
+        .optional()
+        .map_err(|e| Error::Get(e.to_string()))
     }
     fn times(&self) -> Result<Vec<DateTime<Utc>>, Error> {
         let mut stmt = self
-            .connection
+            .db
             .prepare_cached("select timestamp from ttkv order by timestamp desc")
             .map_err(|e| Error::Times(e.to_string()))?;
         let iter = stmt
@@ -175,7 +171,7 @@ mod tests {
 
                     #[test]
                     fn initially_empty() {
-                        let r = <$TTKV<String, String> as Ttkv<$T, String, String>>::new();
+                        let r = <$TTKV<String, String>>::new();
                         assert!(r.is_ok());
                         let t = r.unwrap();
                         let r = t.is_empty();
@@ -189,7 +185,7 @@ mod tests {
                     proptest! {
                         #[test]
                         fn single_get(a: String, x : String) {
-                            let r = <$TTKV<String, String> as Ttkv<$T, String, String>>::new();
+                            let r = $TTKV::new();
                             prop_assert!(r.is_ok());
                             let mut t = r.unwrap();
                             let r = t.put(a.clone(), x.clone(), None);
@@ -205,7 +201,7 @@ mod tests {
                         #[test]
                         fn two_gets_different_keys(a: String, b: String, x: String, y: String) {
                             prop_assume!(a != b);
-                            let r = <$TTKV<String, String> as Ttkv<$T, String, String>>::new();
+                            let r = $TTKV::new();
                             prop_assert!(r.is_ok());
                             let mut t = r.unwrap();
                             let r = t.put(a.clone(), x.clone(), None);
@@ -228,7 +224,7 @@ mod tests {
                         #[test]
                         fn two_gets_same_key(a: String, x: String, y: String) {
                             prop_assume!(x != y);
-                            let r = <$TTKV<String, String> as Ttkv<$T, String, String>>::new();
+                            let r = $TTKV::new();
                             prop_assert!(r.is_ok());
                             let mut t = r.unwrap();
                             let r = t.put(a.clone(), x, None);
@@ -246,7 +242,7 @@ mod tests {
                         #[test]
                         fn middle_get(a: String, x: String, y: String) {
                             prop_assume!(x != y);
-                            let r = <$TTKV<String, String> as Ttkv<$T, String, String>>::new();
+                            let r = $TTKV::new();
                             prop_assert!(r.is_ok());
                             let mut t = r.unwrap();
                             let r = t.put(a.clone(), x.clone(), None);
@@ -265,8 +261,8 @@ mod tests {
                         }
 
                         #[test]
-                        fn before_time(a: String, x: String, delta in (1i64 .. (std::i32::MAX as i64))) {
-                            let r = <$TTKV<String, String> as Ttkv<$T, String, String>>::new();
+                        fn before_time(a: String, x: String, delta in (1i64 .. (i32::MAX as i64))) {
+                            let r = $TTKV::new();
                             prop_assert!(r.is_ok());
                             let mut t = r.unwrap();
                             let r = t.put(a.clone(), x, None);
@@ -287,10 +283,10 @@ mod tests {
     }
 
     test!(Map, u128, |t: u128, d: i64| Some(
-        t.saturating_sub(d.try_into().unwrap())
+        t.saturating_sub(d.abs().try_into().unwrap())
     ));
     test!(SQLite, DateTime<Utc>, |t: DateTime<Utc>, d: i64| Some(
-        t.checked_sub_signed(TimeDelta::seconds(d))
+        t.checked_sub_signed(TimeDelta::seconds(d.abs()))
             .unwrap_or_default()
     ));
 }
