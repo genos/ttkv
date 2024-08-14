@@ -1,0 +1,32 @@
+cabal-version: 3.6
+name: ttkv
+version: 0.1.0.0
+license: MIT
+author: Graham Enos
+maintainer: graham.enos@gmail.com
+category: Data
+build-type: Simple
+
+library
+  ghc-options: -Wall
+  exposed-modules: TTKV
+  hs-source-dirs: src
+  default-language: GHC2024
+  build-depends:
+    base ^>=4.20.0.0,
+    clock ^>=0.8.4,
+    containers ^>=0.7,
+
+test-suite ttkv-test
+  ghc-options: -F -pgmF=skeletest-preprocessor
+  build-tool-depends: skeletest:skeletest-preprocessor
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  default-language: GHC2024
+  main-is: Main.hs
+  other-modules: TTKVSpec
+  build-depends:
+    base ^>=4.20.0.0,
+    containers ^>=0.7,
+    skeletest ^>=0.1,
+    ttkv,
