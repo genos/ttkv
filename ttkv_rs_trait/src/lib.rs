@@ -5,12 +5,12 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{
     types::{FromSql, ToSql},
-    Connection, OptionalExtension,
+    Connection, OptionalExtension, Row,
 };
 use std::{collections::BTreeMap, marker::PhantomData, time::Instant};
 
 /// Time traveling key-value store
-pub trait Ttkv<T, K, V>: Sized {
+pub trait Ttkv<T, K: PartialEq, V>: Sized {
     /// Create a store.
     fn new() -> Result<Self, Error>;
     /// Is this store empty?
@@ -21,8 +21,9 @@ pub trait Ttkv<T, K, V>: Sized {
     /// Grab a value associated with the given key, if it exists; if a timestamp is specified, grab the
     /// latest value inserted before the given timestamp.
     fn get(&self, key: &K, timestamp: Option<T>) -> Result<Option<V>, Error>;
-    /// The timestamps at which things were added to this store.
-    fn times(&self) -> Result<Vec<T>, Error>;
+    /// The timestamps at which things were added to this store, optionally restricting to a
+    /// specific key.
+    fn times(&self, key: Option<&K>) -> Result<Vec<T>, Error>;
 }
 
 /// Errors that might occur when working with TTKVs.
@@ -52,7 +53,7 @@ pub struct Map<K, V> {
     mapping: BTreeMap<K, BTreeMap<u128, V>>,
 }
 
-impl<K: Ord, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
+impl<K: Ord + PartialEq, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
     fn new() -> Result<Self, Error> {
         Ok(Self {
             started: Instant::now(),
@@ -81,10 +82,17 @@ impl<K: Ord, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
                 .cloned()
         }))
     }
-    fn times(&self) -> Result<Vec<u128>, Error> {
+    fn times(&self, key: Option<&K>) -> Result<Vec<u128>, Error> {
         let mut ts = self
             .mapping
-            .values()
+            .iter()
+            .filter_map(|(k, v)| {
+                if key.map_or(true, |x| x == k) {
+                    Some(v)
+                } else {
+                    None
+                }
+            })
             .flat_map(|i| i.keys().copied())
             .collect::<Vec<_>>();
         ts.sort();
@@ -100,7 +108,9 @@ pub struct SQLite<K, V> {
     v: PhantomData<V>,
 }
 
-impl<K: FromSql + ToSql, V: FromSql + ToSql> Ttkv<DateTime<Utc>, K, V> for SQLite<K, V> {
+impl<K: PartialEq + FromSql + ToSql, V: FromSql + ToSql> Ttkv<DateTime<Utc>, K, V>
+    for SQLite<K, V>
+{
     fn new() -> Result<Self, Error> {
         let db = Connection::open_in_memory().map_err(|e| Error::Creation(e.to_string()))?;
         db.execute_batch(
@@ -121,7 +131,7 @@ create index key_index on ttkv(key);
             .db
             .prepare_cached("select count(*) = 0 from ttkv")
             .map_err(|e| Error::IsEmpty(e.to_string()))?;
-        stmt.query_row((), |row| row.get::<usize, bool>(0))
+        stmt.query_row((), |row| row.get(0))
             .map_err(|e| Error::IsEmpty(e.to_string()))
     }
     fn put(&mut self, key: K, value: V, timestamp: Option<DateTime<Utc>>) -> Result<(), Error> {
@@ -137,22 +147,30 @@ create index key_index on ttkv(key);
         let mut stmt = self.db.prepare_cached(
                 "select value from ttkv where key = ?1 and timestamp <= ?2 order by timestamp desc limit 1"
             ).map_err(|e| Error::Get(e.to_string()))?;
-        stmt.query_row((key, timestamp.unwrap_or_else(Utc::now)), |row| {
-            row.get::<usize, V>(0)
-        })
-        .optional()
-        .map_err(|e| Error::Get(e.to_string()))
+        stmt.query_row((key, timestamp.unwrap_or_else(Utc::now)), |row| row.get(0))
+            .optional()
+            .map_err(|e| Error::Get(e.to_string()))
     }
-    fn times(&self) -> Result<Vec<DateTime<Utc>>, Error> {
+    fn times(&self, key: Option<&K>) -> Result<Vec<DateTime<Utc>>, Error> {
+        let mut s = "select timestamp from ttkv ".to_string();
+        if key.is_some() {
+            s.push_str("where key = ?1 ");
+        }
+        s.push_str("order by timestamp desc");
         let mut stmt = self
             .db
-            .prepare_cached("select timestamp from ttkv order by timestamp desc")
+            .prepare_cached(&s)
             .map_err(|e| Error::Times(e.to_string()))?;
-        let iter = stmt
-            .query_map((), |row| row.get::<usize, DateTime<Utc>>(0))
-            .map_err(|e| Error::Times(e.to_string()))?;
-        iter.map(|r| r.map_err(|e| Error::Times(e.to_string())))
-            .collect::<Result<Vec<_>, Error>>()
+        let get = |row: &Row| row.get(0);
+        if let Some(k) = key {
+            stmt.query_map([k], get)
+                .map_err(|e| Error::Times(e.to_string()))?
+        } else {
+            stmt.query_map([], get)
+                .map_err(|e| Error::Times(e.to_string()))?
+        }
+        .map(|r| r.map_err(|e| Error::Times(e.to_string())))
+        .collect::<Result<Vec<_>, Error>>()
     }
 }
 
@@ -177,7 +195,7 @@ mod tests {
                         let r = t.is_empty();
                         assert!(r.is_ok());
                         assert!(r.unwrap());
-                        let r = t.times();
+                        let r = t.times(None);
                         assert!(r.is_ok());
                         assert!(r.unwrap().is_empty());
                     }
@@ -190,7 +208,10 @@ mod tests {
                             let mut t = r.unwrap();
                             let r = t.put(a.clone(), x.clone(), None);
                             prop_assert!(r.is_ok());
-                            let r = t.times();
+                            let r = t.times(None);
+                            prop_assert!(r.is_ok());
+                            prop_assert_eq!(r.unwrap().len(), 1);
+                            let r = t.times(Some(&a));
                             prop_assert!(r.is_ok());
                             prop_assert_eq!(r.unwrap().len(), 1);
                             let r = t.get(&a, None);
@@ -208,9 +229,15 @@ mod tests {
                             prop_assert!(r.is_ok());
                             let r = t.put(b.clone(), y.clone(), None);
                             prop_assert!(r.is_ok());
-                            let r = t.times();
+                            let r = t.times(None);
                             prop_assert!(r.is_ok());
                             prop_assert_eq!(r.unwrap().len(), 2);
+                            let r = t.times(Some(&a));
+                            prop_assert!(r.is_ok());
+                            prop_assert_eq!(r.unwrap().len(), 1);
+                            let r = t.times(Some(&b));
+                            prop_assert!(r.is_ok());
+                            prop_assert_eq!(r.unwrap().len(), 1);
                             let r = t.get(&a, None);
                             prop_assert!(r.is_ok());
                             let g = r.unwrap();
@@ -231,7 +258,7 @@ mod tests {
                             prop_assert!(r.is_ok());
                             let r = t.put(a.clone(), y.clone(), None);
                             prop_assert!(r.is_ok());
-                            let r = t.times();
+                            let r = t.times(None);
                             prop_assert!(r.is_ok());
                             prop_assert_eq!(r.unwrap().len(), 2);
                             let r = t.get(&a, None);
@@ -249,7 +276,7 @@ mod tests {
                             prop_assert!(r.is_ok());
                             let r = t.put(a.clone(), y, None);
                             prop_assert!(r.is_ok());
-                            let r = t.times();
+                            let r = t.times(None);
                             prop_assert!(r.is_ok());
                             let times = r.unwrap();
                             prop_assert_eq!(times.len(), 2);
@@ -267,7 +294,7 @@ mod tests {
                             let mut t = r.unwrap();
                             let r = t.put(a.clone(), x, None);
                             prop_assert!(r.is_ok());
-                            let r = t.times();
+                            let r = t.times(None);
                             prop_assert!(r.is_ok());
                             let times = r.unwrap();
                             prop_assert_eq!(times.len(), 1);
