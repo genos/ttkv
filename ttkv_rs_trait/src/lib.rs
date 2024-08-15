@@ -1,7 +1,7 @@
 //! Time traveling key-value store
 #![deny(clippy::all)]
-#![warn(clippy::pedantic)]
-#![warn(clippy::nursery)]
+#![deny(clippy::pedantic)]
+#![deny(clippy::nursery)]
 #![forbid(missing_docs)]
 #![forbid(unsafe_code)]
 
