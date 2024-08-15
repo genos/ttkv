@@ -29,20 +29,20 @@ pub trait Ttkv<T, K: PartialEq, V>: Sized {
 /// Errors that might occur when working with TTKVs.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Errors on creation
-    #[error("Unable to create a TTKV: {0}")]
-    Creation(String),
+    /// Error in creation
+    #[error("Error in NEW: {0}")]
+    New(String),
     /// Error in checking emptiness
-    #[error("Unable to IS_EMPTY: {0}")]
+    #[error("Error in IS_EMPTY: {0}")]
     IsEmpty(String),
     /// Error in getting something
-    #[error("Unable to GET: {0}")]
+    #[error("Error in GET: {0}")]
     Get(String),
     /// Error in putting something
-    #[error("Unable to PUT: {0}")]
+    #[error("Error in PUT: {0}")]
     Put(String),
     /// Error in collecting times
-    #[error("Unable to TIMES: {0}")]
+    #[error("Error in TIMES: {0}")]
     Times(String),
 }
 
@@ -71,12 +71,12 @@ impl<K: Ord + PartialEq, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
     }
     fn put(&mut self, key: K, value: V, timestamp: Option<u128>) -> Result<(), Error> {
         let t = match timestamp {
-            Some(t) => Ok(t),
+            Some(t) => t,
             None => Instant::now()
                 .checked_duration_since(self.started)
                 .ok_or(Error::Put("non-monotonic insertion".to_string()))
-                .map(|x| x.as_nanos()),
-        }?;
+                .map(|x| x.as_nanos())?,
+        };
         self.mapping.entry(key).or_default().insert(t, value);
         Ok(())
     }
@@ -84,8 +84,7 @@ impl<K: Ord + PartialEq, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
         Ok(self.mapping.get(key).and_then(|i| {
             i.range(0..timestamp.unwrap_or(u128::MAX))
                 .last()
-                .map(|(_, v)| v)
-                .cloned()
+                .map(|(_, v)| v.clone())
         }))
     }
     fn times(&self, key: Option<&K>) -> Result<Vec<u128>, Error> {
@@ -94,12 +93,12 @@ impl<K: Ord + PartialEq, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
             .iter()
             .filter_map(|(k, v)| {
                 if key.map_or(true, |x| x == k) {
-                    Some(v)
+                    Some(v.keys().copied())
                 } else {
                     None
                 }
             })
-            .flat_map(|i| i.keys().copied())
+            .flatten()
             .collect::<Vec<_>>();
         ts.sort();
         Ok(ts)
@@ -120,9 +119,9 @@ where
     V: FromSql + ToSql,
 {
     fn new() -> Result<Self, Error> {
-        let db = map_err!(Creation, Connection::open_in_memory())?;
+        let db = map_err!(New, Connection::open_in_memory())?;
         map_err!(
-            Creation,
+            New,
             db.execute_batch(
                 "
 create table ttkv (t timestamp primary key, k blob not null, v blob not null);
@@ -175,7 +174,7 @@ create index k_ix on ttkv(k);
         if let Some(k) = key {
             map_err!(Times, stmt.query_map([k], get))?
         } else {
-            map_err!(Times, stmt.query_map([], get))?
+            map_err!(Times, stmt.query_map((), get))?
         }
         .map(|r| map_err!(Times, r))
         .collect()
