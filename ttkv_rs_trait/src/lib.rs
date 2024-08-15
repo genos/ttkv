@@ -1,4 +1,7 @@
 //! Time traveling key-value store
+#![deny(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
 #![forbid(missing_docs)]
 #![forbid(unsafe_code)]
 
@@ -12,17 +15,32 @@ use std::{collections::BTreeMap, marker::PhantomData, time::Instant};
 /// Time traveling key-value store
 pub trait Ttkv<T, K: PartialEq, V>: Sized {
     /// Create a store.
+    ///
+    /// # Errors
+    /// If something goes wrong.
     fn new() -> Result<Self, Error>;
     /// Is this store empty?
+    ///
+    /// # Errors
+    /// If something goes wrong.
     fn is_empty(&self) -> Result<bool, Error>;
     /// Add a pair to the store. If a timestamp is specified, use it; otherwise, set the insertion
     /// timestamp to now - (when this store was created).
+    ///
+    /// # Errors
+    /// If something goes wrong.
     fn put(&mut self, key: K, value: V, timestamp: Option<T>) -> Result<(), Error>;
     /// Grab a value associated with the given key, if it exists; if a timestamp is specified, grab the
     /// latest value inserted before the given timestamp.
+    ///
+    /// # Errors
+    /// If something goes wrong.
     fn get(&self, key: &K, timestamp: Option<T>) -> Result<Option<V>, Error>;
     /// The timestamps at which things were added to this store, optionally restricting to a
     /// specific key.
+    ///
+    /// # Errors
+    /// If something goes wrong.
     fn times(&self, key: Option<&K>) -> Result<Vec<T>, Error>;
 }
 
@@ -74,7 +92,7 @@ impl<K: Ord + PartialEq, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
             Some(t) => t,
             None => Instant::now()
                 .checked_duration_since(self.started)
-                .ok_or(Error::Put("non-monotonic insertion".to_string()))
+                .ok_or_else(|| Error::Put("non-monotonic insertion".to_string()))
                 .map(|x| x.as_nanos())?,
         };
         self.mapping.entry(key).or_default().insert(t, value);
@@ -100,7 +118,7 @@ impl<K: Ord + PartialEq, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
             })
             .flatten()
             .collect::<Vec<_>>();
-        ts.sort();
+        ts.sort_unstable();
         Ok(ts)
     }
 }
@@ -295,6 +313,7 @@ mod tests {
                         }
 
                         #[test]
+                        #[allow(clippy::cast_lossless)]
                         fn before_time(a: String, x: String, delta in (1i64 .. (i32::MAX as i64))) {
                             let r = $TTKV::new();
                             prop_assert!(r.is_ok());
