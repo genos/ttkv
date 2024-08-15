@@ -46,6 +46,12 @@ pub enum Error {
     Times(String),
 }
 
+macro_rules! map_err {
+    ($kind:ident, $stuff:expr) => {
+        $stuff.map_err(|e| Error::$kind(e.to_string()))
+    };
+}
+
 /// BTreeMap-based TTKV
 #[derive(Debug)]
 pub struct Map<K, V> {
@@ -108,69 +114,71 @@ pub struct SQLite<K, V> {
     v: PhantomData<V>,
 }
 
-impl<K: PartialEq + FromSql + ToSql, V: FromSql + ToSql> Ttkv<DateTime<Utc>, K, V>
-    for SQLite<K, V>
+impl<K, V> Ttkv<DateTime<Utc>, K, V> for SQLite<K, V>
+where
+    K: PartialEq + FromSql + ToSql,
+    V: FromSql + ToSql,
 {
     fn new() -> Result<Self, Error> {
-        let db = Connection::open_in_memory().map_err(|e| Error::Creation(e.to_string()))?;
-        db.execute_batch(
-            "
-create table ttkv (timestamp timestamp primary key, key blob not null, value blob not null);
-create index key_index on ttkv(key);
+        let db = map_err!(Creation, Connection::open_in_memory())?;
+        map_err!(
+            Creation,
+            db.execute_batch(
+                "
+create table ttkv (t timestamp primary key, k blob not null, v blob not null);
+create index k_ix on ttkv(k);
         ",
-        )
-        .map_err(|e| Error::Creation(e.to_string()))?;
-        Ok(Self {
-            db,
-            k: PhantomData,
-            v: PhantomData,
-        })
+            )
+        )?;
+        let (k, v) = (PhantomData, PhantomData);
+        Ok(Self { db, k, v })
     }
     fn is_empty(&self) -> Result<bool, Error> {
-        let mut stmt = self
-            .db
-            .prepare_cached("select count(*) = 0 from ttkv")
-            .map_err(|e| Error::IsEmpty(e.to_string()))?;
-        stmt.query_row((), |row| row.get(0))
-            .map_err(|e| Error::IsEmpty(e.to_string()))
+        let mut stmt = map_err!(
+            IsEmpty,
+            self.db.prepare_cached("select count(*) = 0 from ttkv")
+        )?;
+        map_err!(IsEmpty, stmt.query_row((), |row| row.get(0)))
     }
     fn put(&mut self, key: K, value: V, timestamp: Option<DateTime<Utc>>) -> Result<(), Error> {
-        let mut stmt = self
-            .db
-            .prepare_cached("insert into ttkv values (?1, ?2, ?3)")
-            .map_err(|e| Error::Put(e.to_string()))?;
-        stmt.execute((timestamp.unwrap_or_else(Utc::now), key, value))
-            .map_err(|e| Error::Put(e.to_string()))?;
+        let mut stmt = map_err!(
+            Put,
+            self.db
+                .prepare_cached("insert into ttkv values (?1, ?2, ?3)")
+        )?;
+        map_err!(
+            Put,
+            stmt.execute((timestamp.unwrap_or_else(Utc::now), key, value))
+        )?;
         Ok(())
     }
     fn get(&self, key: &K, timestamp: Option<DateTime<Utc>>) -> Result<Option<V>, Error> {
-        let mut stmt = self.db.prepare_cached(
-                "select value from ttkv where key = ?1 and timestamp <= ?2 order by timestamp desc limit 1"
-            ).map_err(|e| Error::Get(e.to_string()))?;
-        stmt.query_row((key, timestamp.unwrap_or_else(Utc::now)), |row| row.get(0))
-            .optional()
-            .map_err(|e| Error::Get(e.to_string()))
+        let mut stmt = map_err!(
+            Get,
+            self.db.prepare_cached(
+                "select v from ttkv where k = ?1 and t <= ?2 order by t desc limit 1"
+            )
+        )?;
+        map_err!(
+            Get,
+            stmt.query_row((key, timestamp.unwrap_or_else(Utc::now)), |row| row.get(0))
+                .optional()
+        )
     }
     fn times(&self, key: Option<&K>) -> Result<Vec<DateTime<Utc>>, Error> {
-        let mut s = "select timestamp from ttkv ".to_string();
-        if key.is_some() {
-            s.push_str("where key = ?1 ");
-        }
-        s.push_str("order by timestamp desc");
-        let mut stmt = self
-            .db
-            .prepare_cached(&s)
-            .map_err(|e| Error::Times(e.to_string()))?;
+        let sql = format!(
+            "select t from ttkv{}order by t desc",
+            if key.is_some() { " where k = ?1 " } else { " " }
+        );
+        let mut stmt = map_err!(Times, self.db.prepare_cached(&sql))?;
         let get = |row: &Row| row.get(0);
         if let Some(k) = key {
-            stmt.query_map([k], get)
-                .map_err(|e| Error::Times(e.to_string()))?
+            map_err!(Times, stmt.query_map([k], get))?
         } else {
-            stmt.query_map([], get)
-                .map_err(|e| Error::Times(e.to_string()))?
+            map_err!(Times, stmt.query_map([], get))?
         }
-        .map(|r| r.map_err(|e| Error::Times(e.to_string())))
-        .collect::<Result<Vec<_>, Error>>()
+        .map(|r| map_err!(Times, r))
+        .collect()
     }
 }
 
