@@ -115,7 +115,7 @@ impl<K: PartialEq + FromSql + ToSql, V: FromSql + ToSql> Ttkv<DateTime<Utc>, K, 
         let db = Connection::open_in_memory().map_err(|e| Error::Creation(e.to_string()))?;
         db.execute_batch(
             "
-create table ttkv (timestamp text primary key, key blob not null, value blob not null);
+create table ttkv (timestamp timestamp primary key, key blob not null, value blob not null);
 create index key_index on ttkv(key);
         ",
         )
