@@ -1,6 +1,5 @@
 module TTKVSpec (spec) where
 
-import Control.Monad (guard)
 import Data.IntSet qualified as IS
 import Data.Map.Strict qualified as M
 import Skeletest

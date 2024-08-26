@@ -8,7 +8,7 @@ import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe)
 import System.Clock (Clock (..), TimeSpec (..), getTime)
 
-data TTKV k v = TTKV {_started :: {-# UNPACK #-} !Int, _mapping :: Map k (IntMap v)}
+data TTKV k v = TTKV {_started :: {-# UNPACK #-} !Int, _mapping :: !(Map k (IntMap v))}
     deriving (Eq)
 
 tsNanos :: IO Int

@@ -8,7 +8,11 @@ category: Data
 build-type: Simple
 
 library
-  ghc-options: -Wall
+  ghc-options:
+    -Wall
+    -Wextra
+    -O2
+
   exposed-modules: TTKV
   hs-source-dirs: src
   default-language: GHC2024
@@ -18,7 +22,13 @@ library
     containers ^>=0.7,
 
 test-suite ttkv-test
-  ghc-options: -F -pgmF=skeletest-preprocessor
+  ghc-options:
+    -F
+    -pgmF=skeletest-preprocessor
+    -Wall
+    -Wextra
+    -O2
+
   build-tool-depends: skeletest:skeletest-preprocessor
   type: exitcode-stdio-1.0
   hs-source-dirs: test
