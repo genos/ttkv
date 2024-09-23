@@ -19,10 +19,9 @@ class TTKV:
         self.conn.row_factory = Row
         self.cursor = self.conn.cursor()
         self.cursor.execute(
-            "create table ttkv (timestamp integer, key blob, value blob)"
+            "create table ttkv (ts timestamp primary key, k blob not null, v blob not null)"
         )
-        self.cursor.execute("create index timestamp_index on ttkv(timestamp)")
-        self.cursor.execute("create index key_index on ttkv(key)")
+        self.cursor.execute("create index key_index on ttkv(k)")
         self.conn.commit()
 
     def put(self, key: Any, value: Any) -> None:
@@ -46,27 +45,27 @@ class TTKV:
         ValueError
             If timestamp is not `None` and not an integer
         """
-        select = "select * from ttkv where key = ?"
-        order = "order by timestamp desc"
+        select = "select * from ttkv where k = ?"
+        order = "order by ts desc"
         if timestamp is None:
             self.cursor.execute(f"{select} {order}", (dumps(key),))
         elif isinstance(timestamp, int):
             self.cursor.execute(
-                f"{select} and timestamp <= ? {order}", (dumps(key), timestamp)
+                f"{select} and ts <= ? {order}", (dumps(key), timestamp)
             )
         else:
             raise ValueError(timestamp)
         result = self.cursor.fetchone()
         if result is None:
             raise KeyError(key)
-        return loads(result["value"])
+        return loads(result["v"])
 
     def times(self, key: Any = None) -> List[int]:
         """All times (or just for a given key) in our TTKV"""
-        select = "select timestamp from ttkv"
-        order = "order by timestamp desc"
+        select = "select ts from ttkv"
+        order = "order by ts desc"
         if key is None:
             self.cursor.execute(f"{select} {order}")
         else:
-            self.cursor.execute(f"{select} where key = ? {order}", (dumps(key),))
-        return [row["timestamp"] for row in self.cursor.fetchall()]
+            self.cursor.execute(f"{select} where k = ? {order}", (dumps(key),))
+        return [row["ts"] for row in self.cursor.fetchall()]
