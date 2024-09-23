@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Time Traveling Key-Value Store"""
 
 from pickle import dumps, loads
