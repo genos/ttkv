@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """Time Traveling Key-Value Store"""
 
-
 from pickle import dumps, loads
 from sqlite3 import Row, connect
-from time import perf_counter
+from time import perf_counter_ns
 from typing import Any, List, Optional
-
-
-def perf_counter_ns() -> int:
-    """`time.perf_counter_ns()` was introduced in 3.7"""
-    return int(perf_counter() * 1e9)
 
 
 class TTKV:
