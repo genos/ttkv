@@ -22,11 +22,15 @@ impl<K, V> Default for Ttkv<K, V> {
 
 impl<K, V> Ttkv<K, V> {
     /// Is this store empty?
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.mapping.is_empty()
     }
     /// Add a pair to the store. If a timestamp is specified, use it; otherwise, set the insertion
     /// timestamp to now - (when this store was created).
+    ///
+    /// # Panics
+    /// If insertion isn't monotonic.
     pub fn put(&mut self, key: K, value: V, timestamp: Option<u128>) {
         let t = timestamp.unwrap_or_else(|| {
             Instant::now()
@@ -49,8 +53,9 @@ impl<K, V> Ttkv<K, V> {
             .map(|(_, (_, v))| v)
     }
     /// The timestamps at which things were added to this store
+    #[must_use]
     pub fn times(&self) -> Vec<u128> {
-        self.mapping.keys().cloned().collect()
+        self.mapping.keys().copied().collect()
     }
 }
 

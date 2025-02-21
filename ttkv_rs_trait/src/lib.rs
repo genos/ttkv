@@ -110,7 +110,7 @@ impl<K: Ord + PartialEq, V: Clone> Ttkv<u128, K, V> for Map<K, V> {
             .mapping
             .iter()
             .filter_map(|(k, v)| {
-                if key.map_or(true, |x| x == k) {
+                if key.is_none_or(|x| x == k) {
                     Some(v.keys().copied())
                 } else {
                     None
