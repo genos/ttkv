@@ -1,6 +1,6 @@
 cabal-version: 3.6
 name: ttkv
-version: 0.1.0.0
+version: 0.1.1.0
 license: MIT
 author: Graham Enos
 maintainer: graham.enos@gmail.com
@@ -38,5 +38,5 @@ test-suite ttkv-test
   build-depends:
     base ^>=4.20.0.0,
     containers ^>=0.7,
-    skeletest ^>=0.1,
+    skeletest ^>=0.2.1,
     ttkv,
