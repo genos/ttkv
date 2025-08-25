@@ -203,7 +203,7 @@ create index k_ix on ttkv(k);
 mod tests {
     use super::*;
     use chrono::TimeDelta;
-    use paste::paste;
+    use pastey::paste;
 
     macro_rules! test {
         ($TTKV:tt, $T:ty, $f:expr) => {
