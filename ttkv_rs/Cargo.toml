@@ -4,4 +4,4 @@ version = "0.3.0"
 edition = "2024"
 
 [dev-dependencies]
-proptest = "1.6.0"
+proptest = "1.8.0"
