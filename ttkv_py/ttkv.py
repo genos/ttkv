@@ -3,14 +3,14 @@
 from pickle import dumps, loads
 from sqlite3 import Row, connect
 from time import perf_counter_ns
-from typing import Any, List, Optional
+from typing import Any
 
 
 class TTKV:
     """Time Traveling Key-Value Store
 
-    Uses `sqlite3` and `pickle` to store things
-    Could raise weird `pickle` errors with strange input
+    Uses `sqlite3` and `pickle` to store things.
+    Could raise weird `pickle` errors with strange input.
     """
 
     def __init__(self) -> None:
@@ -30,7 +30,7 @@ class TTKV:
             (perf_counter_ns(), dumps(key), dumps(value)),
         )
 
-    def get(self, key: Any, timestamp: Optional[int] = None) -> Any:
+    def get(self, key: Any, timestamp: int | None = None) -> Any:
         """Retrieve a value for a given key
 
         If `timestamp` is `None`, return the latest value.
@@ -39,10 +39,10 @@ class TTKV:
         Raises
         ------
         KeyError
-            If `key` isn't present (or wasn't, if using a timestamp)
+            If `key` isn't present (or wasn't, if using a timestamp).
 
         ValueError
-            If timestamp is not `None` and not an integer
+            If timestamp is not `None` and not an integer.
         """
         select = "select * from ttkv where k = ?"
         order = "order by ts desc"
@@ -59,7 +59,7 @@ class TTKV:
             raise KeyError(key)
         return loads(result["v"])
 
-    def times(self, key: Any = None) -> List[int]:
+    def times(self, key: Any | None = None) -> list[int]:
         """All times (or just for a given key) in our TTKV"""
         select = "select ts from ttkv"
         order = "order by ts desc"

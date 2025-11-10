@@ -1,8 +1,5 @@
-#!/usr/bin/env python3
 """Property tests for TTKV"""
 
-
-from typing import Tuple
 from ttkv import TTKV
 from hypothesis import assume, given
 from hypothesis.strategies import composite, floats, integers, text
@@ -16,7 +13,7 @@ INT = integers(min_value=SQLITE_MIN_INT, max_value=SQLITE_MAX_INT)
 
 
 @composite
-def distinct_keys(draw) -> Tuple[str, str]:
+def distinct_keys(draw) -> tuple[str, str]:
     a, b = draw(STR), draw(STR)
     assume(a != b)
     return (a, b)
@@ -36,7 +33,7 @@ def test_single_get(a: str, x: int) -> None:
 
 
 @given(distinct_keys(), INT, INT)
-def test_two_gets_different_keys(ab: Tuple[str, str], x: int, y: int) -> None:
+def test_two_gets_different_keys(ab: tuple[str, str], x: int, y: int) -> None:
     a, b = ab
     ttkv = TTKV()
     ttkv.put(a, x)
