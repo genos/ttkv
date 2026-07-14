@@ -1,0 +1,26 @@
+[project]
+name = "ttkv"
+version = "0.1.0"
+description = "Time Traveling Key Value Store, using sqlmodel & dill"
+readme = "README.md"
+authors = [
+    { name = "Graham Enos", email = "graham.enos@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "dill>=0.4.1",
+    "sqlmodel>=0.0.39",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.156.6",
+    "pyright>=1.1.411",
+    "pytest>=9.1.1",
+    "ruff>=0.15.21",
+    "ty>=0.0.59",
+]
