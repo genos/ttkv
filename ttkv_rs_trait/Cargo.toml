@@ -1,13 +1,13 @@
 [package]
 name = "ttkv_rs_trait"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
-chrono = "0.4.42"
-rusqlite = { version = "0.37.0", features = ["bundled", "chrono"] }
-thiserror = "2.0.16"
+chrono = "0.4.45"
+rusqlite = { version = "0.40.1", features = ["bundled", "chrono"] }
+thiserror = "2.0.18"
 
 [dev-dependencies]
-pastey = "0.1.1"
-proptest = "1.8.0"
+pastey = "0.2.3"
+proptest = "1.11.0"
